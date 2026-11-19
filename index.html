@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#101114" />
+  <title>Premade Sounds — أصوات جاهزة | تحويل النص إلى كلام عربي</title>
+  <meta name="description" content="موقع Premade Sounds يحوّل النص العربي إلى كلام (Text to Speech) ويحفظه في متصفحك. يعمل على أي جهاز بصوت عربي مدمج — ولّد الأصوات، أعد تسميتها، انسخها أو احذفها." />
+  <link rel="icon" type="image/svg+xml" href="assets/icon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Kufi+Arabic:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- الترويسة -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="./" aria-label="Premade Sounds — الرئيسية">
+        <img src="assets/icon.svg" alt="" width="44" height="44" class="brand-logo" />
+        <span class="brand-text">
+          <span class="brand-name">Premade Sounds</span>
+          <span class="brand-tagline">أصوات جاهزة بنقرة واحدة</span>
+        </span>
+      </a>
+      <div class="header-badge">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>يعمل على أي جهاز</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- المحتوى الرئيسي: نصفان -->
+  <main class="container main-grid">
+
+    <!-- النصف الأيمن: التوليد -->
+    <section class="panel" aria-labelledby="generate-title">
+      <div class="panel-head">
+        <div class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </div>
+        <div>
+          <h1 id="generate-title">توليد صوت جديد</h1>
+          <p class="panel-sub">اكتب النص ثم اضغط «توليد» — الصوت العربي مدمج داخل الموقع</p>
+        </div>
+      </div>
+
+      <form id="generate-form" class="generate-form">
+        <label class="field-label" for="text-input">النص المطلوب نطقه</label>
+        <div class="textarea-wrap">
+          <textarea id="text-input" name="text" rows="6" maxlength="1000" placeholder="مثال: أهلًا وسهلًا بك في موقع أصوات جاهزة…" required></textarea>
+          <span class="char-counter"><span id="char-count">0</span> / 1000</span>
+        </div>
+
+        <div class="voice-chip" role="note">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+          <span>الصوت: <strong>عربي (eSpeak NG)</strong> — يعمل على جميع الأجهزة والمتصفحات دون الحاجة لأصوات النظام</span>
+        </div>
+
+        <div class="sliders-grid">
+          <div class="control-block">
+            <div class="slider-head">
+              <label class="field-label" for="rate-range">سرعة الكلام</label>
+              <output id="rate-value" for="rate-range">1.0×</output>
+            </div>
+            <input type="range" id="rate-range" min="0.5" max="2" step="0.1" value="1" />
+          </div>
+          <div class="control-block">
+            <div class="slider-head">
+              <label class="field-label" for="pitch-range">طبقة الصوت</label>
+              <output id="pitch-value" for="pitch-range">1.0</output>
+            </div>
+            <input type="range" id="pitch-range" min="0" max="2" step="0.1" value="1" />
+          </div>
+        </div>
+
+        <div class="generate-actions">
+          <button type="button" id="preview-btn" class="btn btn-ghost">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            استماع تجريبي
+          </button>
+          <button type="submit" id="generate-btn" class="btn btn-primary">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+            <span class="btn-label">توليد الصوت</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- النصف الأيسر: قائمة الأصوات -->
+    <section class="panel" aria-labelledby="sounds-title">
+      <div class="panel-head">
+        <div class="panel-icon icon-amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        </div>
+        <div class="sounds-head-text">
+          <h2 id="sounds-title">الأصوات المحفوظة <span id="sounds-count" class="count-badge">0</span></h2>
+          <p class="panel-sub">تُخزَّن في متصفحك — عدّل الاسم، انسخ أو احذف أي صوت</p>
+        </div>
+      </div>
+
+      <div class="sounds-toolbar">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+          <input type="search" id="search-input" placeholder="ابحث في الأصوات…" aria-label="البحث في الأصوات المحفوظة" />
+        </div>
+        <button type="button" id="clear-all-btn" class="btn btn-ghost btn-small btn-danger-ghost" title="حذف كل الأصوات">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          مسح الكل
+        </button>
+      </div>
+
+      <ul id="sounds-list" class="sounds-list" aria-live="polite"></ul>
+
+      <div id="empty-state" class="empty-state">
+        <svg class="empty-art" viewBox="0 0 120 120" width="88" height="88" aria-hidden="true">
+          <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="6 9"/>
+          <path d="M36 60h8l5-17 6 30 5-22 4 9h14" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h3>لا توجد أصوات محفوظة بعد</h3>
+        <p>اكتب نصًا في الحقل الجانبي واضغط «توليد الصوت» —<br />ستظهر الأصوات هنا تلقائيًا.</p>
+      </div>
+
+      <div id="no-results" class="empty-state" hidden>
+        <h3>لا توجد نتائج مطابقة</h3>
+        <p>جرّب كلمة أخرى في البحث.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <span>Premade Sounds — أصوات جاهزة</span>
+      <span class="footer-dot" aria-hidden="true">•</span>
+      <span>تُحفظ بياناتك في متصفحك فقط ولا تُرسَل إلى أي خادم</span>
+    </div>
+  </footer>
+
+  <!-- إشعارات -->
+  <div id="toast-container" class="toast-container" aria-live="assertive"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
