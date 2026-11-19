@@ -6,7 +6,7 @@
 
 - صوت عربي طبيعي محلي عبر [Piper](https://github.com/rhasspy/piper) (`ar_JO-kareem-medium`) — يُنزَّل مرة واحدة (~63 م.بايت) ويُخزَّن محليًا.
 - أصوات عصبية سحابية **مجانًا وبدون مفتاح** عبر [Puter.js](https://js.puter.com) (Polly Hala/Zayd/Zeina وElevenLabs Bella — بحساب Puter فقط عند تجاوز الحد المجاني).
-- Google Translate TTS مجاني بدون مفتاح (للتشغيل فقط).
+- Google Translate TTS للمستخدم مجانًا بدون مفتاح (عبر خوادم Lingva العامة مع تبديل بين خادمين، وصوت Google جودة معقولة) — يُخزَّن الناتج مؤقتًا في IndexedDB.
 - VoiceRSS بجودة أعلى — بمفتاح مجاني خاص بك (350 طلب/يوم)، يُحفظ في متصفحك.
 - eSpeak NG مدمج وفوري (آلي) كخيار أخير يعمل دون اتصال.
 - المقاطع السحابية تُخزَّن مؤقتًا في IndexedDB؛ الأصوات (نص + إعدادات) تُحفظ في `localStorage` وتُولَّد عند الطلب.

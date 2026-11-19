@@ -11,7 +11,7 @@
 'use strict';
 
 /* ارفع هذا الرقم ومعه ?v= في index.html عند كل نشر — يمنع تحميل ملفات قديمة من الذاكرة المؤقتة */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const STORAGE_KEY = 'premade-sounds:v1';
 const VOICERSS_KEY_STORAGE = 'premade-sounds:voicerss-key';
@@ -241,16 +241,19 @@ async function synthesizePuter(entry) {
   throw new Error('Puter: لم يصل صوت');
 }
 
-/* ---- Google Translate TTS (بدون مفتاح — تشغيل تدفقي عبر <audio>) ---- */
-const GOOGLE_TTS_MAX_CHUNK = 180; // حرفًا لكل طلب تقريبًا
+/* ---- Google Translate TTS عبر خوادم Lingva (سحابي، بدون مفتاح) ----
+   translate_tts المباشر يرفض المتصفحات (429)، لذا نستخدم واجهة Lingva العامة
+   التي تُرجع MP3 صوت Google كمصفوفة بايتات في JSON، مع تبديل بين خادمين. */
+const LINGVA_INSTANCES = ['https://lingva.lunar.icu', 'https://translate.plausibility.cloud'];
+const TTS_MAX_CHUNK = 180; // حرفًا لكل طلب تقريبًا
 
-function googleChunks(text) {
+function ttsChunks(text) {
   const words = String(text).split(/\s+/).filter(Boolean);
   const chunks = [];
   let current = '';
   for (const word of words) {
     const candidate = current ? current + ' ' + word : word;
-    if (candidate.length > GOOGLE_TTS_MAX_CHUNK && current) {
+    if (candidate.length > TTS_MAX_CHUNK && current) {
       chunks.push(current);
       current = word;
     } else {
@@ -261,8 +264,41 @@ function googleChunks(text) {
   return chunks.length ? chunks : [text];
 }
 
-const googleTtsUrl = (chunk) =>
-  'https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-in-it&tl=ar&q=' + encodeURIComponent(chunk);
+const lingvaAudioUrl = (base, chunk) => `${base}/api/v1/audio/ar/${encodeURIComponent(chunk)}`;
+
+async function lingvaChunkBlob(chunk) {
+  let lastErr = null;
+  for (const base of LINGVA_INSTANCES) {
+    try {
+      const res = await fetchImpl(lingvaAudioUrl(base, chunk));
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const bytes = String(data.audio || '').split(',');
+      if (bytes.length < 1000) throw new Error('إجابة غير صالحة');
+      const arr = Uint8Array.from(bytes, Number);
+      if (arr[0] !== 0xff) throw new Error('ليس MP3');
+      return new Blob([arr], { type: 'audio/mpeg' });
+    } catch (err) {
+      lastErr = err;
+      console.warn('Lingva instance failed:', base, err);
+    }
+  }
+  throw lastErr || new Error('كل خوادم Lingva غير متاحة');
+}
+
+async function synthesizeLingva(text) {
+  const chunks = ttsChunks(text);
+  if (chunks.length === 1) return lingvaChunkBlob(chunks[0]);
+  const blobs = [];
+  for (const chunk of chunks) blobs.push(await lingvaChunkBlob(chunk));
+  // دمج مقاطع MP3 المتتابعة — تعمل في المتصفحات (الإطارات مستقلة)
+  const parts = await Promise.all(blobs.map(b => b.arrayBuffer()));
+  const total = parts.reduce((n, p) => n + p.byteLength, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const p of parts) { merged.set(new Uint8Array(p), offset); offset += p.byteLength; }
+  return new Blob([merged], { type: 'audio/mpeg' });
+}
 
 /* ---- VoiceRSS (مفتاح مجاني للمستخدم، يُخزَّن محليًا) ---- */
 function getVoiceRssKey() {
@@ -325,7 +361,9 @@ async function synthesize(entry, onProgress) {
   if (cached) return { blob: cached, engine: v.engine, cached: true };
 
   if (v.engine === 'google') {
-    return { urls: googleChunks(entry.text).map(googleTtsUrl), engine: 'google' };
+    const blob = await synthesizeLingva(entry.text);
+    await idbSet(cacheKey, blob);
+    return { blob, engine: 'google' };
   }
   if (v.engine === 'voicerss') {
     const blob = await synthesizeVoiceRss(entry);
@@ -434,15 +472,26 @@ async function playEntry(entry) {
     console.error('فشل توليد الصوت:', err);
     const code = err && err.code;
     if (code === 'NO_KEY') {
-      playingId = null; syncPlayingUI();
-      showToast('VoiceRSS يحتاج مفتاحًا مجانيًا — الصقه في حقل المفتاح بالأسفل.', 'danger');
       revealVoiceRssBox(true);
-      return;
+      try {
+        const fallback = await synthesizeLingva(entry.text);
+        playBlob(fallback, entry.id, 'google', entry.rate);
+        showToast('لا يوجد مفتاح VoiceRSS — استُخدم صوت احتياطي. يمكنك الاشتراك مجانًا بـ350 طلب/يوم.', 'danger');
+        return;
+      } catch (err2) {
+        console.error(err2);
+        playingId = null; syncPlayingUI();
+        showToast('VoiceRSS يحتاج مفتاحًا مجانيًا — الصقه في حقل المفتاح بالأسفل.', 'danger');
+        return;
+      }
     }
     if (findVoice(entry.voice).engine === 'voicerss' || findVoice(entry.voice).engine === 'puter') {
-      showToast('تعذّر الصوت السحابي — استُخدم Google المجاني بدلًا منه.', 'danger');
-      playUrlQueue(googleChunks(entry.text).map(googleTtsUrl), entry.id, 'تعذّر تشغيل Google أيضًا.');
-      return;
+      showToast('تعذّر الصوت السحابي — استُخدم صوت احتياطي بدلًا منه.', 'danger');
+      try {
+        const blob = await synthesizeLingva(entry.text);
+        playBlob(blob, entry.id, 'google', entry.rate);
+        return;
+      } catch (err2) { console.error(err2); }
     }
     playingId = null; syncPlayingUI();
     speakWithSystemVoice(entry); // احتياطي أخير
@@ -715,7 +764,7 @@ function syncVoiceControls() {
     voiceHelp.textContent =
       v.engine === 'piper' ? 'طبيعي محلي، يُخزَّن في جهازك بعد التنزيل الأول' :
       v.engine === 'puter' ? 'عصبية سحابية مجانية عبر Puter — دون مفتاح (حساب Puter عند تجاوز الحد المجاني)' :
-      v.engine === 'google' ? 'سحابي مجاني — للتشغيل فقط (لا يُخزَّن)' :
+      v.engine === 'google' ? 'سحابي مجاني — صوت Google عبر خوادم Lingva العامة (قد يتباطأ أحيانًا)' :
       v.engine === 'voicerss' ? 'سحابي بجودة أعلى — يحتاج مفتاحًا مجانيًا 350 طلب/يوم' :
       'آلي لكن فوري ولا يحتاج الإنترنت';
   }
@@ -755,12 +804,26 @@ previewBtn.addEventListener('click', async () => {
   } catch (err) {
     console.error(err);
     if (err && err.code === 'NO_KEY') {
-      showToast('VoiceRSS يحتاج مفتاحًا مجانيًا — الصقه في حقل المفتاح.', 'danger');
       revealVoiceRssBox(true);
+      try {
+        const fallback = await synthesizeLingva(text);
+        stopPlayback();
+        playBlob(fallback, '__preview__', 'google', rateRange.value);
+        showToast('لا يوجد مفتاح VoiceRSS — استُخدم صوت احتياطي.', 'danger');
+      } catch (err2) {
+        console.error(err2);
+        speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: 'ar', id: '__preview__' });
+      }
     } else if (findVoice(voiceSelect.value).engine === 'puter' || findVoice(voiceSelect.value).engine === 'voicerss') {
-      showToast('تعذّر الصوت السحابي — استُخدم Google المجاني بدلًا منه.', 'danger');
-      stopPlayback();
-      playUrlQueue(googleChunks(text).map(googleTtsUrl), '__preview__', 'تعذّر تشغيل Google أيضًا.');
+      showToast('تعذّر الصوت السحابي — استُخدم صوت احتياطي بدلًا منه.', 'danger');
+      try {
+        const blob = await synthesizeLingva(text);
+        stopPlayback();
+        playBlob(blob, '__preview__', 'google', rateRange.value);
+      } catch (err2) {
+        console.error(err2);
+        speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: 'ar', id: '__preview__' });
+      }
     } else {
       speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: 'ar', id: '__preview__' });
     }
