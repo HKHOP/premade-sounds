@@ -10,6 +10,34 @@
 const STORAGE_KEY = 'premade-sounds:v1';
 
 /* مفاتيح اختبارية اختيارية يسمح بها التطبيق (غير مستخدمة في الإنتاج) */
+const VOICES = [
+  { id: 'ar',         label: 'عربي — الأساسي' },
+  { id: 'ar+f3',      label: 'عربي — أنثوي' },
+  { id: 'ar+m2',      label: 'عربي — ذكوري' },
+  { id: 'ar+whisper', label: 'عربي — هامس' },
+];
+const DEFAULT_VOICE = 'ar';
+
+function voiceLabel(voiceId) {
+  const match = VOICES.find(v => v.id === voiceId);
+  return match ? match.label : VOICES[0].label;
+}
+
+function safeVoice(voiceId) {
+  return VOICES.some(v => v.id === voiceId) ? voiceId : DEFAULT_VOICE;
+}
+
+function populateVoiceSelect() {
+  voiceSelect.innerHTML = '';
+  for (const v of VOICES) {
+    const opt = document.createElement('option');
+    opt.value = v.id;
+    opt.textContent = v.label;
+    voiceSelect.appendChild(opt);
+  }
+  voiceSelect.value = DEFAULT_VOICE;
+}
+
 const loadEspeakModule = () =>
   window.__espeakLoader ? window.__espeakLoader() : import('./vendor/espeak-ng/espeak-ng.js');
 const createAudio = (url) =>
@@ -28,6 +56,7 @@ let espeakLoading = null;
 const form = document.getElementById('generate-form');
 const textInput = document.getElementById('text-input');
 const charCount = document.getElementById('char-count');
+const voiceSelect = document.getElementById('voice-select');
 const rateRange = document.getElementById('rate-range');
 const pitchRange = document.getElementById('pitch-range');
 const rateValue = document.getElementById('rate-value');
@@ -85,15 +114,15 @@ async function getEspeak() {
   }
 }
 
-function espeakArgs(text, rate, pitch) {
+function espeakArgs(text, rate, pitch, voice) {
   const speed = clamp(Math.round(175 * Number(rate || 1)), 80, 450);   // عدد الكلمات/الدقيقة
   const pitchValueEf = clamp(Math.round(Number(pitch == null ? 1 : pitch) * 50), 0, 99); // eSpeak: 0–99
-  return ['-v', 'ar', '-a', '100', '-s', String(speed), '-p', String(pitchValueEf), '-w', 'output.wav', text];
+  return ['-v', safeVoice(voice), '-a', '100', '-s', String(speed), '-p', String(pitchValueEf), '-w', 'output.wav', text];
 }
 
-async function synthesizeWav(text, rate, pitch) {
+async function synthesizeWav(text, rate, pitch, voice) {
   const factory = await getEspeak();
-  const espeak = await factory({ arguments: espeakArgs(text, rate, pitch) });
+  const espeak = await factory({ arguments: espeakArgs(text, rate, pitch, voice) });
   const data = espeak.FS.readFile('output.wav');
   const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
   return new Blob([bytes], { type: 'audio/wav' });
@@ -122,7 +151,7 @@ async function playEntry(entry) {
   syncPlayingUI();
 
   try {
-    const blob = await synthesizeWav(entry.text, entry.rate, entry.pitch);
+    const blob = await synthesizeWav(entry.text, entry.rate, entry.pitch, entry.voice);
     playBlob(blob, entry.id);
   } catch (err) {
     console.error('فشل توليد الصوت عبر eSpeak NG:', err);
@@ -164,10 +193,12 @@ function speakWithSystemVoice(entry) {
     return;
   }
   const utterance = new SpeechSynthesisUtterance(entry.text);
+  // نحترم نمط الصوت المختار قدر الإمكان في الاحتياطي: إزاحة طبقة الصوت حسب النمط
   utterance.voice = arabic;
   utterance.lang = arabic.lang;
   utterance.rate = clamp(Number(entry.rate) || 1, 0.5, 2);
-  utterance.pitch = clamp(Number(entry.pitch) || 1, 0, 2);
+  const pitchOffset = entry.voice === 'ar+f3' ? 0.35 : entry.voice === 'ar+m2' ? -0.3 : 0;
+  utterance.pitch = clamp((Number(entry.pitch) || 1) + pitchOffset, 0, 2);
   utterance.onend = () => { playingId = null; syncPlayingUI(); };
   utterance.onerror = () => { playingId = null; syncPlayingUI(); };
   playingId = entry.id;
@@ -198,8 +229,6 @@ function escapeHTML(str) {
 }
 
 function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
-
-const VOICE_LABEL = 'عربي — eSpeak NG المدمج';
 
 /* ---------- الإشعارات ---------- */
 function showToast(message, type = 'ok', actionLabel, actionFn) {
@@ -232,7 +261,8 @@ function filteredSounds() {
   if (!q) return sounds;
   return sounds.filter(s =>
     s.name.toLowerCase().includes(q) ||
-    s.text.toLowerCase().includes(q)
+    s.text.toLowerCase().includes(q) ||
+    voiceLabel(s.voice).toLowerCase().includes(q)
   );
 }
 
@@ -262,7 +292,7 @@ function renderItem(sound) {
       </div>
       <p class="sound-text" title="${escapeHTML(sound.text)}">${escapeHTML(sound.text)}</p>
       <div class="sound-meta">
-        <span>${VOICE_LABEL}</span>
+        <span>${escapeHTML(voiceLabel(sound.voice))}</span>
         <span>السرعة ${sound.rate}×</span>
         <span>${escapeHTML(formatDate(sound.createdAt))}</span>
       </div>
@@ -293,11 +323,12 @@ function syncPlayingUI() {
 }
 
 /* ---------- إجراءات الأصوات ---------- */
-function addSound(text, rate, pitch) {
+function addSound(text, rate, pitch, voice) {
   const entry = {
     id: uid(),
     name: autoName(text),
     text: text.trim(),
+    voice: safeVoice(voice),
     rate: clamp(Number(rate), 0.5, 2),
     pitch: clamp(Number(pitch), 0, 2),
     createdAt: Date.now(),
@@ -380,12 +411,12 @@ previewBtn.addEventListener('click', async () => {
   if (!text) { showToast('اكتب نصًا أولًا للاستماع إليه.', 'danger'); textInput.focus(); return; }
   setBusy(true, 'جارٍ التحميل…');
   try {
-    const blob = await synthesizeWav(text, rateRange.value, pitchRange.value);
+    const blob = await synthesizeWav(text, rateRange.value, pitchRange.value, voiceSelect.value);
     stopPlayback();
     playBlob(blob, '__preview__');
   } catch (err) {
     console.error(err);
-    speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, id: '__preview__' });
+    speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: voiceSelect.value, id: '__preview__' });
   } finally {
     setBusy(false);
   }
@@ -396,7 +427,7 @@ form.addEventListener('submit', async (e) => {
   const text = textInput.value.trim();
   if (!text) { showToast('اكتب نصًا أولًا ثم اضغط توليد.', 'danger'); textInput.focus(); return; }
 
-  const entry = addSound(text, rateRange.value, pitchRange.value);
+  const entry = addSound(text, rateRange.value, pitchRange.value, voiceSelect.value);
 
   setBusy(true, 'جارٍ التوليد…');
   try {
@@ -445,5 +476,6 @@ clearAllBtn.addEventListener('click', clearAllSounds);
 window.addEventListener('beforeunload', stopPlayback);
 
 /* ---------- إقلاع ---------- */
+populateVoiceSelect();
 loadSounds();
 renderSounds();

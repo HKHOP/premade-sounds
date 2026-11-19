@@ -114,6 +114,13 @@ textarea:focus, input[type="search"]:focus, input[type="text"]:focus {
 .voice-chip svg { flex: 0 0 auto; margin-top: 0.2rem; color: var(--accent); }
 .voice-chip strong { color: var(--text); font-weight: 600; }
 
+.voice-block { margin-bottom: 0.9rem; }
+.select-wrap { position: relative; }
+select { font-family: var(--font-body); color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.75rem 0.85rem; padding-inline-end: 2.2rem; font-size: 1rem; width: 100%; min-height: 48px; appearance: none; cursor: pointer; transition: border-color 0.15s ease; }
+select:focus { outline: none; border-color: var(--accent); }
+select option { background: var(--surface-2); color: var(--text); }
+.select-caret { position: absolute; top: 50%; inset-inline-end: 0.7rem; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
+
 .sliders-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.1rem; }
 .slider-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem; }
 .slider-head .field-label { margin-bottom: 0; }
