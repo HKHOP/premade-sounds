@@ -6,8 +6,10 @@
 
 - `index.html` — الصفحة الوحيدة (RTL، `lang="ar"`).
 - `styles.css` — كل التنسيقات.
-- `app.js` — كل المنطق: توليد الصوت عبر eSpeak NG (WASM) المدمج في `vendor/espeak-ng/` مع تراجع اختياري إلى Web Speech API + `localStorage` (المفتاح `premade-sounds:v1`).
-- `vendor/espeak-ng/` — نسخة محلية من حزمة `espeak-ng` (انظر LICENSE) لضمان صوت عربي على أي جهاز دون أصوات النظام.
+- `app.js` — كل المنطق: توليد الصوت عبر Piper (طبيعي، وتخزين النماذج في OPFS) أو eSpeak NG المدمج، مع تراجع اختياري إلى Web Speech API + `localStorage` (المفتاح `premade-sounds:v1`).
+- `vendor/espeak-ng/` — نسخة محلية من حزمة `espeak-ng` (انظر LICENSE) — الصوت الاصطناعي المدمج.
+- `vendor/piper/` — صوت Piper الطبيعي (`ar_JO-kareem-medium`)؛ النموذج (~63 م.بايت) يُنزَّل عند أول استخدام ويُخزَّن في OPFS. انظر NOTICE.md.
+- التفريغ المؤقت (cache busting) إلزامي: أي نشر يغيّر `APP_VERSION` في `app.js` ويُبقي `?v=<نفس الرقم>` متوافقًا في `index.html` (css/js/vendor). لا تدفع بدون ذلك.
 - `assets/` — الأيقونات والوسائط الثابتة.
 - لا تُضِف إطار عمل أو خطوة بناء دون موافقة صريحة من صاحب المستودع.
 

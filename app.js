@@ -7,20 +7,28 @@
    ========================================================= */
 'use strict';
 
+/* ارفع هذا الرقم ومعه ?v= في index.html عند كل نشر — يمنع تحميل ملفات قديمة من الذاكرة المؤقتة */
+const APP_VERSION = '1.1.0';
+
 const STORAGE_KEY = 'premade-sounds:v1';
 
 /* مفاتيح اختبارية اختيارية يسمح بها التطبيق (غير مستخدمة في الإنتاج) */
+/* الأصوات: Piper (طبيعية، تُنزَّل مرة واحدة ثم تُخزَّن في OPFS) + eSpeak NG (مدمج فوري، اصطناعي) */
 const VOICES = [
-  { id: 'ar',         label: 'عربي — الأساسي' },
-  { id: 'ar+f3',      label: 'عربي — أنثوي' },
-  { id: 'ar+m2',      label: 'عربي — ذكوري' },
-  { id: 'ar+whisper', label: 'عربي — هامس' },
+  { id: 'piper:ar_JO-kareem-medium', label: 'عربي — طبيعي (Piper)', engine: 'piper' },
+  { id: 'ar',                        label: 'عربي — الأساسي (eSpeak)', engine: 'espeak' },
+  { id: 'ar+f3',                     label: 'عربي — أنثوي (eSpeak)',   engine: 'espeak' },
+  { id: 'ar+m2',                     label: 'عربي — ذكوري (eSpeak)',   engine: 'espeak' },
+  { id: 'ar+whisper',                label: 'عربي — هامس (eSpeak)',    engine: 'espeak' },
 ];
-const DEFAULT_VOICE = 'ar';
+const DEFAULT_VOICE = 'piper:ar_JO-kareem-medium';
+
+function findVoice(voiceId) {
+  return VOICES.find(v => v.id === voiceId) || VOICES[0];
+}
 
 function voiceLabel(voiceId) {
-  const match = VOICES.find(v => v.id === voiceId);
-  return match ? match.label : VOICES[0].label;
+  return findVoice(voiceId).label;
 }
 
 function safeVoice(voiceId) {
@@ -29,17 +37,38 @@ function safeVoice(voiceId) {
 
 function populateVoiceSelect() {
   voiceSelect.innerHTML = '';
-  for (const v of VOICES) {
-    const opt = document.createElement('option');
-    opt.value = v.id;
-    opt.textContent = v.label;
-    voiceSelect.appendChild(opt);
+  const groups = [
+    { label: 'صوت طبيعي — Piper (يُنزَّل مرة واحدة)', engine: 'piper' },
+    { label: 'أصوات eSpeak NG — مدمجة وفورية', engine: 'espeak' },
+  ];
+  for (const g of groups) {
+    const group = document.createElement('optgroup');
+    group.label = g.label;
+    for (const v of VOICES.filter(v => v.engine === g.engine)) {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      opt.textContent = v.label;
+      group.appendChild(opt);
+    }
+    voiceSelect.appendChild(group);
   }
   voiceSelect.value = DEFAULT_VOICE;
+  syncPitchAvailability();
+}
+
+function syncPitchAvailability() {
+  const piper = findVoice(voiceSelect.value).engine === 'piper';
+  const note = document.getElementById('pitch-note');
+  pitchRange.disabled = piper;
+  if (note) note.hidden = !piper;
+  const block = pitchRange.closest('.control-block');
+  if (block) block.classList.toggle('is-disabled', piper);
 }
 
 const loadEspeakModule = () =>
-  window.__espeakLoader ? window.__espeakLoader() : import('./vendor/espeak-ng/espeak-ng.js');
+  window.__espeakLoader ? window.__espeakLoader() : import(`./vendor/espeak-ng/espeak-ng.js?v=${APP_VERSION}`);
+const loadPiperModule = () =>
+  window.__piperLoader ? window.__piperLoader() : import(`./vendor/piper/piper-tts-web.js?v=${APP_VERSION}`);
 const createAudio = (url) =>
   window.__audioFactory ? window.__audioFactory(url) : new Audio(url);
 
@@ -120,12 +149,31 @@ function espeakArgs(text, rate, pitch, voice) {
   return ['-v', safeVoice(voice), '-a', '100', '-s', String(speed), '-p', String(pitchValueEf), '-w', 'output.wav', text];
 }
 
-async function synthesizeWav(text, rate, pitch, voice) {
+async function synthesizeEspeak(text, rate, pitch, voice) {
   const factory = await getEspeak();
   const espeak = await factory({ arguments: espeakArgs(text, rate, pitch, voice) });
   const data = espeak.FS.readFile('output.wav');
   const bytes = data instanceof Uint8Array ? data : Uint8Array.from(data);
   return new Blob([bytes], { type: 'audio/wav' });
+}
+
+/* توليد Piper طبيعي — يُنزِّل النموذج مرة واحدة (~63 م.بايت) ويخزّنه في OPFS */
+async function synthesizePiper(text, voiceId, onProgress) {
+  if (window.__piperPredict) return window.__piperPredict(text, voiceId, onProgress);
+  const mod = await loadPiperModule();
+  const predict = mod.predict || (mod.default && mod.default.predict);
+  if (typeof predict !== 'function') throw new Error('مكتبة Piper غير مفهومة');
+  return predict({ text, voiceId }, onProgress);
+}
+
+async function synthesize(text, rate, pitch, voice, onProgress) {
+  const v = findVoice(safeVoice(voice));
+  if (v.engine === 'piper') {
+    const blob = await synthesizePiper(text, v.id.replace(/^piper:/, ''), onProgress);
+    return { blob, engine: 'piper' };
+  }
+  const blob = await synthesizeEspeak(text, rate, pitch, v.id);
+  return { blob, engine: 'espeak' };
 }
 
 /* ---------- التشغيل ---------- */
@@ -144,6 +192,15 @@ function stopPlayback() {
   syncPlayingUI();
 }
 
+function makeProgressReporter() {
+  return (p) => {
+    if (p && p.total > 0 && String(p.url || '').endsWith('.onnx')) {
+      const pct = Math.min(99, Math.round((p.loaded / p.total) * 100));
+      setBusy(true, `جارٍ تنزيل الصوت الطبيعي… ${pct}%`);
+    }
+  };
+}
+
 async function playEntry(entry) {
   if (playingId === entry.id) { stopPlayback(); return; }
   stopPlayback();
@@ -151,20 +208,32 @@ async function playEntry(entry) {
   syncPlayingUI();
 
   try {
-    const blob = await synthesizeWav(entry.text, entry.rate, entry.pitch, entry.voice);
-    playBlob(blob, entry.id);
+    const { blob, engine } = await synthesize(entry.text, entry.rate, entry.pitch, entry.voice, makeProgressReporter());
+    playBlob(blob, entry.id, engine, entry.rate);
   } catch (err) {
-    console.error('فشل توليد الصوت عبر eSpeak NG:', err);
+    console.error('فشل توليد الصوت عبر المحرك الأساسي:', err);
+    if (findVoice(entry.voice).engine === 'piper') {
+      showToast('تعذّر الصوت الطبيعي — استُخدم الصوت المدمج eSpeak بدلًا منه.', 'danger');
+      try {
+        const blob = await synthesizeEspeak(entry.text, entry.rate, entry.pitch, 'ar');
+        playBlob(blob, entry.id, 'espeak', entry.rate);
+        return;
+      } catch (err2) {
+        console.error('فشل eSpeak أيضًا:', err2);
+      }
+    }
     playingId = null;
     syncPlayingUI();
     speakWithSystemVoice(entry); // احتياطي أخير إن وُجدت أصوات النظام
   }
 }
 
-function playBlob(blob, id) {
+function playBlob(blob, id, engine, rate) {
   currentObjectUrl = URL.createObjectURL(blob);
   const audio = createAudio(currentObjectUrl);
   currentAudio = audio;
+  // Piper لا يدعم تغيير طبقة الصوت؛ السرعة تُطبق عبر playbackRate مع الحفاظ على الطبقة
+  if (engine === 'piper') audio.playbackRate = clamp(Number(rate) || 1, 0.5, 2);
 
   const finish = () => {
     if (currentObjectUrl) { URL.revokeObjectURL(currentObjectUrl); currentObjectUrl = null; }
@@ -397,6 +466,7 @@ textInput.addEventListener('input', () => {
   charCount.textContent = String(textInput.value.length);
 });
 
+voiceSelect.addEventListener('change', syncPitchAvailability);
 rateRange.addEventListener('input', () => { rateValue.textContent = `${Number(rateRange.value).toFixed(1)}×`; });
 pitchRange.addEventListener('input', () => { pitchValue.textContent = Number(pitchRange.value).toFixed(1); });
 
@@ -409,14 +479,26 @@ function setBusy(busy, label) {
 previewBtn.addEventListener('click', async () => {
   const text = textInput.value.trim();
   if (!text) { showToast('اكتب نصًا أولًا للاستماع إليه.', 'danger'); textInput.focus(); return; }
-  setBusy(true, 'جارٍ التحميل…');
+  setBusy(true, 'جارٍ التوليد…');
   try {
-    const blob = await synthesizeWav(text, rateRange.value, pitchRange.value, voiceSelect.value);
+    const { blob, engine } = await synthesize(text, rateRange.value, pitchRange.value, voiceSelect.value, makeProgressReporter());
     stopPlayback();
-    playBlob(blob, '__preview__');
+    playBlob(blob, '__preview__', engine, rateRange.value);
   } catch (err) {
     console.error(err);
-    speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: voiceSelect.value, id: '__preview__' });
+    if (findVoice(voiceSelect.value).engine === 'piper') {
+      showToast('تعذّر الصوت الطبيعي — استُخدم eSpeak بدلًا منه.', 'danger');
+      try {
+        const blob = await synthesizeEspeak(text, rateRange.value, pitchRange.value, 'ar');
+        stopPlayback();
+        playBlob(blob, '__preview__', 'espeak', rateRange.value);
+      } catch (err2) {
+        console.error(err2);
+        speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: 'ar', id: '__preview__' });
+      }
+    } else {
+      speakWithSystemVoice({ text, rate: rateRange.value, pitch: pitchRange.value, voice: voiceSelect.value, id: '__preview__' });
+    }
   } finally {
     setBusy(false);
   }
